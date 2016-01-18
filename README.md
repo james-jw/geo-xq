@@ -126,7 +126,8 @@ The geocode method accepts a Geocoding service connection. The paramters require
 either be the empty sequence of a set of geocoded candidates. 
 
 ```xquery
-let $geo-service := local:connect($req, 'http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/Locators/ESRI_Geocode_USA/GeocodeServer')
+let $url := 'http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/Locators/ESRI_Geocode_USA/GeocodeServer'
+let $geo-service := local:connect($req, $url)
 return 
   local:geocode($geo-service, map { 
     'Address': '380 NEW YORK ST', 
@@ -140,8 +141,9 @@ Operates similar to geocode but in the opposite direction. Instead of returning 
 given a geometry. Alternatively it will return the empty sequence if no candidates exist. For example:
 
 ```xquery
-let $geo-service := local:connect($req, 'http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/Locators/ESRI_Geocode_USA/GeocodeServer')
-let $geometry := .?location
+let $url := 'http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/Locators/ESRI_Geocode_USA/GeocodeServer'
+let $geo-service := local:connect($req, $url)
+let $geometry := $feature?location
 return
   local:reverse-geocode($geo-service, $geometry) 
 ```
