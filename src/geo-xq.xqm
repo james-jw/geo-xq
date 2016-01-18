@@ -1,14 +1,16 @@
-import module namespace geo = "http://expath.org/ns/geo";
-declare namespace gml='http://www.opengis.net/gml';
-import module namespace promise = 'org.jw.basex.async.xq-promise'; 
+(:~
+ : Geo Utility module for working with GeoJSON, GML and ESRI features
+ : @author James Wright
+ :)
+module namespace geo = 'https://github.com/james-jw/geo-x://github.com/james-jw/geo-xq';
+declare namespace gml ='http://www.opengis.net/gml';
 
-(: Internal helper methods :)
-declare %private function local:get($service, $paths) {
-  $paths ! local:request($service, '/' || .)
+declare %private function geo:get($service, $paths) {
+  $paths ! geo:request($service, '/' || .)
 };
 
 (: Internal helper method :)
-declare function local:process-response($res) {
+declare function geo:process-response($res) {
   try { $res[2] => parse-json() }
   catch * { $res[2] }
 };
@@ -19,7 +21,7 @@ declare function local:process-response($res) {
  : @param $url - Full or relative url of the endpoint to request
  : @param $method - HTTP verb to utilize (GET, PUT, POST, DELETE, HEAD)
  :)
-declare function local:primitive-request($service, $url, $method) {
+declare function geo:primitive-request($service, $url, $method) {
   let $url := 
     if($url => matches('f=json')) then $url 
     else (
@@ -38,9 +40,9 @@ declare function local:primitive-request($service, $url, $method) {
  : @param $url - Full or relative url of the endpoint to request
  : @param $method - HTTP verb to utilize (GET, PUT, POST, DELETE, HEAD)
  :)
-declare function local:request($service, $url, $method) {
-  local:primitive-request($service, $url, $method)
-     => local:process-response()
+declare function geo:request($service, $url, $method) {
+  geo:primitive-request($service, $url, $method)
+     => geo:process-response()
 };
 
 (:~ 
@@ -48,8 +50,8 @@ declare function local:request($service, $url, $method) {
  : @param $service - Service to make the request against 
  : @param $url - Full or relative url of the endpoint to request
  :)
-declare function local:request($service, $url) {
-  local:request($service, $url, 'GET')
+declare function geo:request($service, $url) {
+  geo:request($service, $url, 'GET')
 };
 
 (:~
@@ -57,7 +59,7 @@ declare function local:request($service, $url) {
  : @param $login - Username to use
  : @param $password - Password to use
  :)
-declare function local:request-template($login, $password) {
+declare function geo:request-template($login, $password) {
   if($login) then
     <http:send-request username="{$login}" password="{$password}" send-authorization="true" />
   else 
@@ -65,16 +67,16 @@ declare function local:request-template($login, $password) {
 };
 
 (:~ Connect to a non secured service :)
-declare function local:request-template() {
-  local:request-template((), ())
+declare function geo:request-template() {
+  geo:request-template((), ())
 };
 
 (:~
  : Connects to the specified service url with the provided 
  : request template object
  :)
-declare function local:connect($req, $url as xs:string) {
-  map:merge((local:request(map { '_request': $req }, $url), map { 
+declare function geo:connect($req, $url as xs:string) {
+  map:merge((geo:request(map { '_request': $req }, $url), map { 
     '_url': $url,
     '_request': $req
   }))
@@ -86,7 +88,7 @@ declare function local:connect($req, $url as xs:string) {
  : @param Service to request the layers from
  : @return Layer names
  :)
-declare function local:layers($service) {
+declare function geo:layers($service) {
   $service?layers?*
 };
 
@@ -97,8 +99,8 @@ declare function local:layers($service) {
  : @param $layers - Layers to request
  : @return Request layer details
  :)
-declare function local:get-layers($service, $layers) {
-  local:get($service, $layers?id)
+declare function geo:get-layers($service, $layers) {
+  geo:get($service, $layers?id)
 };
 
 (:~
@@ -108,8 +110,8 @@ declare function local:get-layers($service, $layers) {
  : @param $folders - folders to request
  : @return Request folder details
  :)
-declare function local:get-folders($server, $folders) {
-  local:get($server, $folders)
+declare function geo:get-folders($server, $folders) {
+  geo:get($server, $folders)
 };
 
 (:~
@@ -118,9 +120,9 @@ declare function local:get-folders($server, $folders) {
  : @param $services - List of services to retrieve
  : @return Service details for the requested services
  :)
-declare function local:get-services($server, $services) {
+declare function geo:get-services($server, $services) {
   for $path in ($services ! (.?name || '/' || .?type))
-  let $service := local:get($server, $path)
+  let $service := geo:get($server, $path)
   return map:merge(($service, map {
     '_url': $server?_url || '/' || $path,
     '_request': $server?_request
@@ -134,9 +136,9 @@ declare function local:get-services($server, $services) {
  : @param $query - Query parameters as map(xs:string)
  : @return Result of the query 
  :)
-declare function local:query-layer($service, $layer, $query) {
+declare function geo:query-layer($service, $layer, $query) {
   let $url := '/' || $layer?id || '/query'
-  return try { local:request($service, web:create-url($url, $query)) } 
+  return try { geo:request($service, web:create-url($url, $query)) } 
          catch * {($err:description)}
 };
 
@@ -149,13 +151,13 @@ declare function local:query-layer($service, $layer, $query) {
  : the empty sequence is provided, no auto paging will occur
  : @return Result of the query 
  :)
-declare function local:query-layer-xml($service, $layer, $queryIn, $index) {
+declare function geo:query-layer-xml($service, $layer, $queryIn, $index) {
   let $url := '/' || $layer?id || '/query'
   let $where := trace($queryIn?where)
   let $query := 
    if($index >= 0) then map:put($queryIn, 'where', trace('ObjectID > ' || format-number($index, '#')))
    else $queryIn
-  let $res := (local:primitive-request($service, web:create-url($url, $query), 'GET'))
+  let $res := (geo:primitive-request($service, web:create-url($url, $query), 'GET'))
   let $headers := trace($res[1]/@status)
   return  
     let $features :=
@@ -163,14 +165,14 @@ declare function local:query-layer-xml($service, $layer, $queryIn, $index) {
       return
         <feature>
            {$feature/attributes}
-           {local:to-geo-json-geom(json:serialize(<json type="object">{$feature/geometry/*}</json>) => parse-json()) => local:to-gml-geom()}
+           {geo:to-geo-json-geom(json:serialize(<json type="object">{$feature/geometry/*}</json>) => parse-json()) => geo:to-gml-geom()}
         </feature>
      return
         ($features, 
           if($index >= 0 and trace(count($features)) = 1000) then
             let $maxId := trace(max($features/attributes/ObjectID), 'maxid ')
             return 
-              local:query-layer-xml($service, $layer, $query, trace($maxId, 'subQuery: '))
+              geo:query-layer-xml($service, $layer, $query, trace($maxId, 'subQuery: '))
           else ()
         )
 };
@@ -180,9 +182,9 @@ declare function local:query-layer-xml($service, $layer, $queryIn, $index) {
  : @param $geom - Geometry to convert
  : @return GeoJSON geometry
  :)
-declare function local:to-geo-json-geom($geometry) {
+declare function geo:to-geo-json-geom($geometry) {
   let $temp-geom := ($geometry?geometry, $geometry)[1]
-  let $geom := local:from-gml-geom($temp-geom)
+  let $geom := geo:from-gml-geom($temp-geom)
   return
     if($geom?x) then map {
       'type': 'Point',
@@ -206,12 +208,12 @@ declare function local:to-geo-json-geom($geometry) {
  : @param $feature - feature to convert
  : @return GeoJSON geometry
  :)
-declare function local:to-geo-json($features) {
-  let $features := local:from-gml($features)
+declare function geo:to-geo-json($features) {
+  let $features := geo:from-gml($features)
   return
     for $feature in $features return
     map:merge((
-      map { 'geometry': local:to-geo-json-geom($feature) },
+      map { 'geometry': geo:to-geo-json-geom($feature) },
       map { 'properties': $feature?attributes }
     ))
 };
@@ -221,7 +223,7 @@ declare function local:to-geo-json($features) {
  : @param $features - features to convert
  : @return Converted features as GML
  :)
-declare function local:to-gml($features) {
+declare function geo:to-gml($features) {
   for $feature in $features return
   element gml:Feature {
      attribute typeName {'Feature'},
@@ -230,7 +232,7 @@ declare function local:to-gml($features) {
       for $key in map:keys($properties) return
       element {$key} {$properties($key)},
      element gml:geometricProperty {
-       local:to-gml-geom($feature?geometry)
+       geo:to-gml-geom($feature?geometry)
      }
   }
 };
@@ -240,7 +242,7 @@ declare function local:to-gml($features) {
  : @param $feature - Geometry to convert
  : @return GeoJSON geometry
  :)
-declare function local:to-gml-geom($feature) {
+declare function geo:to-gml-geom($feature) {
   let $type := $feature?type
   return
     if($type = 'Point') then
@@ -299,14 +301,14 @@ declare function local:to-gml-geom($feature) {
  : @param $geometry - Feature to convert
  : @return Feature as GML
  :)
-declare function local:from-gml($features) {
+declare function geo:from-gml($features) {
   if(exists(features//gml:geometry) then 
     for $feature in $features return
     map:merge((
       for $property in $feature/*[local-name() != 'geometricProperty']
       return
         map { $property/name(): data($property) },
-      map { 'geometry': local:from-gml-geom($feature//gml:geometry) }
+      map { 'geometry': geo:from-gml-geom($feature//gml:geometry) }
     ))
   else ($features)
 };
@@ -316,7 +318,7 @@ declare function local:from-gml($features) {
  : @param $geometry - Geometry to convert
  : @return Geometry of feature as GML
  :)
-declare function local:from-gml-geom($geometry) {
+declare function geo:from-gml-geom($geometry) {
   let $type := $geometry/local-name() 
   if($type = 'Point') then
    map {
@@ -345,7 +347,7 @@ declare function local:from-gml-geom($geometry) {
  : @param $feature - Geometry to convert
  : @return ESRI Json geometry
  :)
-declare function local:to-esri-geom($feature) {
+declare function geo:to-esri-geom($feature) {
   let $geom := $feature?geometry 
   return
     if($geom?type = 'Point') then map { 
@@ -361,19 +363,19 @@ declare function local:to-esri-geom($feature) {
  : @param $feature - feature to convert
  : @return ESRI Json feature
  :)
-declare function local:to-esri($features) {
+declare function geo:to-esri($features) {
   for $feature in $features return
   if(exists($feature?properties)) then
     map:merge((
-      map { 'geometry': local:to-esri-geom($feature) },
+      map { 'geometry': geo:to-esri-geom($feature) },
       map { 'attributes': $feature?properties }
     ))
   else ($feature)
 };
 
 (: Internal helper function :)
-declare %private function local:edit-features($service, $layer, $features, $endpoint, $options) {
-  local:request($service, web:create-url('/' || $layer?id || '/' || $endpoint, map:merge(($options,
+declare %private function geo:edit-features($service, $layer, $features, $endpoint, $options) {
+  geo:request($service, web:create-url('/' || $layer?id || '/' || $endpoint, map:merge(($options,
   map {
     'features': json:serialize(array { $features })
   }))), 'POST')
@@ -388,8 +390,8 @@ declare %private function local:edit-features($service, $layer, $features, $endp
  : documentation for details
  : @return Result of the request as a json response object
  :)
-declare function local:update-features($service, $layer, $features, $options) {
-  local:edit-features($service, $layer, $features, 'updateFeatures', $options)
+declare function geo:update-features($service, $layer, $features, $options) {
+  geo:edit-features($service, $layer, $features, 'updateFeatures', $options)
 };
 
 (:~
@@ -399,8 +401,8 @@ declare function local:update-features($service, $layer, $features, $options) {
  : @param $features - Features to update
  : @return Result of the request as a json response object
  :)
-declare function local:update-features($service, $layer, $features) {
-  local:edit-features($service, $layer, $features, 'updateFeatures', ())
+declare function geo:update-features($service, $layer, $features) {
+  geo:edit-features($service, $layer, $features, 'updateFeatures', ())
 };
 
 (:~
@@ -412,8 +414,8 @@ declare function local:update-features($service, $layer, $features) {
  : documentation for details
  : @return Result of the request as a json response object
  :)
-declare function local:delete-features($service, $layer, $features, $options) {
-  local:edit-features($service, $layer, $features, 'deleteFeatures', $options)
+declare function geo:delete-features($service, $layer, $features, $options) {
+  geo:edit-features($service, $layer, $features, 'deleteFeatures', $options)
 };
 
 (:~
@@ -424,8 +426,8 @@ declare function local:delete-features($service, $layer, $features, $options) {
  : documentation for details
  : @return Result of the request as a json response object
  :)
-declare function local:delete-features($service, $layer, $features) {
-  local:edit-features($service, $layer, $features, 'deleteFeatures', ())
+declare function geo:delete-features($service, $layer, $features) {
+  geo:edit-features($service, $layer, $features, 'deleteFeatures', ())
 };
 
 (:~
@@ -436,8 +438,8 @@ declare function local:delete-features($service, $layer, $features) {
  : @param $options - Request options as a map(*). See ESRI's REST SDK
  : @return Result of the request as a json response object
  :)
-declare function local:add-features($service, $layer, $features, $options) {
-  local:edit-features($service, $layer, $features, 'addFeatures', $options)
+declare function geo:add-features($service, $layer, $features, $options) {
+  geo:edit-features($service, $layer, $features, 'addFeatures', $options)
 };
 
 (:~
@@ -447,8 +449,8 @@ declare function local:add-features($service, $layer, $features, $options) {
  : @param $features - Features to add
  : @return Result of the request as a json response object
  :)
-declare function local:add-features($service, $layer, $features) {
-  local:edit-features($service, $layer, $features, 'addFeatures', ())
+declare function geo:add-features($service, $layer, $features) {
+  geo:edit-features($service, $layer, $features, 'addFeatures', ())
 };
 
 (:~
@@ -457,7 +459,7 @@ declare function local:add-features($service, $layer, $features) {
  : @values $values - Values to set
  : @return The augmented item
  :)
-declare function local:set($item, $values) {
+declare function geo:set($item, $values) {
   map:merge((
     $item,
     map {
@@ -475,8 +477,8 @@ declare function local:set($item, $values) {
  : @param $paramters - Url paramters to send to the service
  : @return Geocoded ESRI json result
  :)
-declare function local:geocode($service, $parameters as map(*)) {
-  local:request($service, web:create-url('/findAddressCandidates', $parameters))?candidates?*
+declare function geo:geocode($service, $parameters as map(*)) {
+  geo:request($service, web:create-url('/findAddressCandidates', $parameters))?candidates?*
 };
 
 (:~
@@ -485,13 +487,13 @@ declare function local:geocode($service, $parameters as map(*)) {
  : @param $paramters - Url paramters to send to the service
  : @return Geocoded result
  :)
-declare function local:reverse-geocode($service, $geometry as map(*)) {
+declare function geo:reverse-geocode($service, $geometry as map(*)) {
   let $url := web:create-url('/reverseGeocode', trace(map { 'location': json:serialize($geometry) })) 
   return
-    local:request($service, $url)
+    geo:request($service, $url)
 };
 
-declare function local:push-to-service($destination, $name, $index, $contents) {
+declare function geo:push-to-service($destination, $name, $index, $contents) {
     let $url := trace($destination/@href || '/' || trace($name) || '/replica-' || $index || '.xml')
     let $req := element http:request {
       $destination/@*[name() != 'href'],
@@ -511,20 +513,20 @@ declare function local:push-to-service($destination, $name, $index, $contents) {
  : @param $destination - Url of the BaseX service to replicate too.
  : @return Status of the replication (Failed/Complete)
  :)
-declare function local:replicate($service, $layers, $destination) {
+declare function geo:replicate($service, $layers, $destination) {
   for $layer in $layers
-    let $count := local:query-layer($service, $layer, map {
+    let $count := geo:query-layer($service, $layer, map {
       'returnCountOnly': true(),
       'where': 'ObjectID > 0'
     })?count div 1000
     let $promises := 
        (for $i in (0 to 10) 
         return
-         promise:defer(local:query-layer-xml(?, ?, ?, ()), ($service, $layer, map { 
+         promise:defer(geo:query-layer-xml(?, ?, ?, ()), ($service, $layer, map { 
              "outFields": "*",
              "where": "ObjectID >= " || format-number($i * 1000, '#') || " and ObjectID <= " || format-number(($i * 1000) + 1000, '#')
            }, ())) 
-          => promise:done(local:push-to-service($destination, $layer?id || ($layer?name => replace(' ', '')), $i, ?))
+          => promise:done(geo:push-to-service($destination, $layer?id || ($layer?name => replace(' ', '')), $i, ?))
        )
      return
       $promises ! .()
