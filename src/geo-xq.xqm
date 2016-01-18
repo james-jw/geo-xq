@@ -294,6 +294,11 @@ declare function local:to-gml-geom($feature) {
     else error("Invalid geometry")
 };
 
+(:~
+ : Converts GML feature to GeoJSON
+ : @param $geometry - Feature to convert
+ : @return Feature as GML
+ :)
 declare function local:from-gml($features) {
   if(exists(features//gml:geometry) then 
     for $feature in $features return
@@ -306,6 +311,11 @@ declare function local:from-gml($features) {
   else ($features)
 };
 
+(:~
+ : Converts GML geometry to GeoJSON
+ : @param $geometry - Geometry to convert
+ : @return Geometry of feature as GML
+ :)
 declare function local:from-gml-geom($geometry) {
   let $type := $geometry/local-name() 
   if($type = 'Point') then
