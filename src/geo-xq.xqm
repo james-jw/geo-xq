@@ -2,7 +2,7 @@
  : Geo Utility module for working with GeoJSON, GML and ESRI features
  : @author James Wright
  :)
-module namespace geo = 'https://github.com/james-jw/geo-x://github.com/james-jw/geo-xq';
+module namespace geo = 'https://github.com/james-jw/geo-xq';
 declare namespace gml ='http://www.opengis.net/gml';
 
 declare %private function geo:get($service, $paths) {
