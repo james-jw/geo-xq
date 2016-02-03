@@ -4,6 +4,9 @@
  :)
 module namespace geo = 'https://github.com/james-jw/geo-xq';
 declare namespace gml ='http://www.opengis.net/gml';
+declare namespace kml = "http://www.opengis.net/kml/2.2";
+
+declare variable $geo:unknownGeometry := xs:QName('geo:unknownGeometry');
 
 declare %private function geo:get($service, $paths) {
   $paths ! geo:request($service, '/' || .)
@@ -165,7 +168,7 @@ declare function geo:query-layer-xml($service, $layer, $queryIn, $index) {
       return
         <feature>
            {$feature/attributes}
-           {geo:to-geo-json-geom(json:serialize(<json type="object">{$feature/geometry/*}</json>) => parse-json()) => geo:to-gml-geom()}
+           {geo:as-geo-json-geom(json:serialize(<json type="object">{$feature/geometry/*}</json>) => parse-json()) => geo:as-gml-geom()}
         </feature>
      return
         ($features, 
@@ -182,40 +185,99 @@ declare function geo:query-layer-xml($service, $layer, $queryIn, $index) {
  : @param $geom - Geometry to convert
  : @return GeoJSON geometry
  :)
-declare function geo:to-geo-json-geom($geometry) {
-  let $temp-geom := ($geometry?geometry, $geometry)[1]
-  let $geom := geo:from-gml-geom($temp-geom)
-  return
-    if($geom?x) then map {
-      'type': 'Point',
-      "coordinates": array { 
-        $geom?x, $geom?y 
+declare function geo:as-geo-json-geom($geometry) {
+  if($geometry => geo:is-gml()) then geo:from-gml-geom($geometry)
+  else if($geometry => geo:is-kml()) then geo:from-kml-geom($geometry)
+  else if($geometry => geo:is-geo-json()) then $geometry
+  else if($geometry => geo:is-esri()) then
+    let $geom := ($geometry?geometry, $geometry)[1]
+    return
+      if($geom?x) then map {
+        'type': 'Point',
+        "coordinates": array { 
+          $geom?x, $geom?y 
+        }
+      } 
+      else if(exists($geom?paths)) then map {
+        'type': 'LineString',
+        'coordinates': $geom?paths?1
       }
-    } 
-    else if(exists($geom?paths)) then map {
-      'type': 'LineString',
-      'coordinates': $geom?paths?1
-    }
-    else if(exists($geom?rings)) then map {
-      'type': 'Polygon',
-      'coordinates': $geom?rings
-    }
-    else ()
+      else if(exists($geom?rings)) then map {
+        'type': 'Polygon',
+        'coordinates': $geom?rings
+      }
+      else ()
+   else(fn:error($geo:unknownGeometry, 'Invalid or unknown geometry type.'))
 };
 
 (:~ 
- : Converts an ESRI JSON feature into a GeoJSON feature 
+ : Converts an ESRI JSON, GML or KML feature into a GeoJSON feature 
  : @param $feature - feature to convert
  : @return GeoJSON geometry
  :)
-declare function geo:to-geo-json($features) {
-  let $features := geo:from-gml($features)
-  return
-    for $feature in $features return
-    map:merge((
-      map { 'geometry': geo:to-geo-json-geom($feature) },
-      map { 'properties': $feature?attributes }
-    ))
+declare function geo:as-geo-json($features) {
+  let $features := 
+     if($features[1] => geo:is-gml()) then geo:from-gml($features)
+     else if($features[1] => geo:is-kml()) then geo:from-kml($features)
+     else if($features[1] => geo:is-geo-json()) then $features
+     else if($features[1] => geo:is-esri()) then
+      for $feature in $features return
+      map:merge((
+        map { 'geometry': geo:as-geo-json-geom($feature) },
+        map { 'properties': $feature?attributes }
+      ))
+     else (fn:error($geo:unknownGeometry, 'Not a valid, or compatible geometry type.', $features))
+  return $features
+};
+
+(:~ 
+ : Denotes if a single feature is an ESRI JSON geometry
+ : @geom Geometry to inspect
+ : @return True or false
+ :)
+declare function geo:is-esri($geomIn) {
+  if($geomIn instance of map(*)) then
+    let $geom := ($geomIn?geometry, $geomIn)[1] 
+    return if(exists($geom?('x', 'paths', 'rings'))) 
+      then true() else false()
+  else false()
+};
+
+(:~ 
+ : Denotes if a single feature is a GeoJSON geometry
+ : @geom Geometry to inspect
+ : @return True or false
+ :)
+declare function geo:is-geo-json($geomIn) {
+  if($geomIn instance of map(*)) then 
+    let $geom := ($geomIn?geometry, $geomIn)[1]
+    return if(exists($geom?coordinates))
+      then true() else false()
+  else false()
+};
+
+(:~ 
+ : Denotes if a single feature is a GML geometry
+ : @geom Geometry to inspect
+ : @return True or false
+ :)
+declare function geo:is-gml($geom) {
+  if(not($geom instance of map(*))) then 
+    if($geom/namespace-uri() = ('http://www.opengis.net/gml'))
+    then true() else false()
+  else false()
+};
+
+(:~ 
+ : Denotes if a single feature is a KML geometry
+ : @geom Geometry to inspect
+ : @return True or false
+ :)
+declare function geo:is-kml($geom) {
+  if(not($geom instance of map(*))) then 
+    if($geom/namespace-uri() = ('http://www.opengis.net/kml/2.2'))
+    then true() else false()
+  else false()
 };
 
 (:~
@@ -223,16 +285,16 @@ declare function geo:to-geo-json($features) {
  : @param $features - features to convert
  : @return Converted features as GML
  :)
-declare function geo:to-gml($features) {
+declare function geo:as-gml($features) {
   for $feature in $features return
   element gml:Feature {
      attribute typeName {'Feature'},
-     let $properties := feature?properties
+     let $properties := $feature?properties
      return
       for $key in map:keys($properties) return
       element {$key} {$properties($key)},
      element gml:geometricProperty {
-       geo:to-gml-geom($feature?geometry)
+       geo:as-gml-geom($feature?geometry)
      }
   }
 };
@@ -242,7 +304,7 @@ declare function geo:to-gml($features) {
  : @param $feature - Geometry to convert
  : @return GeoJSON geometry
  :)
-declare function geo:to-gml-geom($feature) {
+declare function geo:as-gml-geom($feature) {
   let $type := $feature?type
   return
     if($type = 'Point') then
@@ -293,21 +355,49 @@ declare function geo:to-gml-geom($feature) {
             else ()
           )
       }
-    else error("Invalid geometry")
+    else error($geo:unknownGeometry)
 };
 
 (:~
- : Converts GML feature to GeoJSON
+ : Converts KML features to GeoJSON
  : @param $geometry - Feature to convert
- : @return Feature as GML
+ : @return Feature as GeoJSON 
+ :)
+declare function geo:from-kml($features) {
+  if($features[1]/local-name() = 'Placemark') then
+    for $feature in $features return
+    map:merge((
+      for $property in $feature/* return
+      if(not($property/local-name() = ('LineString', 'Point', 'LinearRing', 'Polygon'))) then 
+         map { $property/local-name(): data($property) }
+      else
+         map { 'geometry': geo:from-gml-geom($property) }       
+    ))
+  else ($features)
+};
+
+(:~
+ : Converts KML geometry to a GeoJSON one
+ : @param $geometry - KML geometry to convert
+ : @return Geometry as GeoJSON 
+ :)
+declare function geo:from-kml-geom($geometry) {
+  (: KML and GML share the same geometry :)
+  geo:from-gml-geom($geometry)
+};
+
+(:~
+ : Converts GML features to GeoJSON
+ : @param $geometry - Feature to convert
+ : @return Feature as GeoJSON
  :)
 declare function geo:from-gml($features) {
-  if(exists(features//gml:geometry) then 
+  if(exists($features[1]//gml:geometry)) then 
     for $feature in $features return
     map:merge((
       for $property in $feature/*[local-name() != 'geometricProperty']
       return
-        map { $property/name(): data($property) },
+        map { $property/local-name(): data($property) },
       map { 'geometry': geo:from-gml-geom($feature//gml:geometry) }
     ))
   else ($features)
@@ -320,26 +410,33 @@ declare function geo:from-gml($features) {
  :)
 declare function geo:from-gml-geom($geometry) {
   let $type := $geometry/local-name() 
+  return
   if($type = 'Point') then
    map {
      'type': 'Point',
-     'coordinates': array { tokenize($geometry/gml:coordinates) ! (tokenize(., ',') ! xs:double(.)) }
+     'coordinates': array { tokenize($geometry/*:coordinates) ! (tokenize(., ',') ! xs:double(.)) }
    }
-  else ($type = 'LineString') then
+  else if($type = 'LineString') then
    map {
      'type': 'LineString',
      'coordinates': array {
-       tokenize($geometry/gml:coordinates) ! (array { tokenize(., ',') ! xs:double(.)) }
+       tokenize($geometry/*:coordinates) ! (array { tokenize(., ',') ! xs:double(.) })
      }
    }
-  else ($type = 'Polygon') then
+  else if($type = 'Polygon') then
    map {
      'type': 'Polygon',
      'coordinates': array {
-       ($geometry/(gml:outerBoundaryIs,gml:innerBoundaryIs)/gml:coordinates !  tokenize(.)) 
-          ! (array { tokenize(., ',') ! xs:double(.)) }
+       ($geometry/(*:outerBoundaryIs,*:innerBoundaryIs)//*:coordinates 
+         ! (array { tokenize(.) ! (array { tokenize(., ',') ! xs:double(.) }) }))
      }
+   }
   else ()
+};
+
+declare function geo:as-esri-geom($feature) {
+  if(geo:is-esri($feature)) then $feature
+  else geo:as-geo-json-geom($feature) => geo:to-esri-geom()
 };
 
 (:~
@@ -363,6 +460,11 @@ declare function geo:to-esri-geom($feature) {
  : @param $feature - feature to convert
  : @return ESRI Json feature
  :)
+declare function geo:as-esri($features) {
+  if(geo:is-esri($features[1])) then $features
+  else geo:as-geo-json($features) => geo:to-esri()
+};
+
 declare function geo:to-esri($features) {
   for $feature in $features return
   if(exists($feature?properties)) then
@@ -392,6 +494,24 @@ declare %private function geo:edit-features($service, $layer, $features, $endpoi
  :)
 declare function geo:update-features($service, $layer, $features, $options) {
   geo:edit-features($service, $layer, $features, 'updateFeatures', $options)
+};
+
+
+(:~ 
+ : Applies the map of adds, updates and deletes to the service 
+ : @param $service - Service to update the features in
+ : @param $layer - Layer to update the features in
+ : @param $edits - edits as a map with any of: adds, updates and deletes as sequences of features
+ : @returns See the ArcGIS REST Api specification on 'applyEdits' for details on the return format.
+ :)
+declare function geo:apply-edits($service, $layer, $edits) {
+  geo:request($service, web:create-url('/' || $layer?id || '/applyEdits', map:merge((
+    map {
+      'updates': json:serialize(array { $edits?updates }),
+      'deletes': json:serialize(array { $edits?deletes?OBJECTID }),
+      'adds': json:serialize(array { $edits?adds })
+    }))), 'POST'
+  )
 };
 
 (:~
@@ -506,28 +626,4 @@ declare function geo:push-to-service($destination, $name, $index, $contents) {
     return trace(http:send-request($req)[2], ' ' || $url)
 };
 
-(:~
- : Replicates the provided layers to a BaseX XML database
- : @param $service - Service to replicate
- : @param $layers - Layers to replicate from the service
- : @param $destination - Url of the BaseX service to replicate too.
- : @return Status of the replication (Failed/Complete)
- :)
-declare function geo:replicate($service, $layers, $destination) {
-  for $layer in $layers
-    let $count := geo:query-layer($service, $layer, map {
-      'returnCountOnly': true(),
-      'where': 'ObjectID > 0'
-    })?count div 1000
-    let $promises := 
-       (for $i in (0 to 10) 
-        return
-         promise:defer(geo:query-layer-xml(?, ?, ?, ()), ($service, $layer, map { 
-             "outFields": "*",
-             "where": "ObjectID >= " || format-number($i * 1000, '#') || " and ObjectID <= " || format-number(($i * 1000) + 1000, '#')
-           }, ())) 
-          => promise:done(geo:push-to-service($destination, $layer?id || ($layer?name => replace(' ', '')), $i, ?))
-       )
-     return
-      $promises ! .()
-};
+

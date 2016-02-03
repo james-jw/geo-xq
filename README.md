@@ -10,10 +10,10 @@ The following Feature and Map services are currently supported
 - ESRI Feature/Map service
 - ESRI Geocoding service
 
-## Working with Features and Geometries
+# Working with Features and Geometries
 The geo-xq module provides several methods for converting between different geographic representations. In particular GeoJSON, GML and ESRI's json format.
 
-### to-geo-json
+### as-geo-json
 Converts a feature into a GeoJSON format. For example:
 
 ```xquery
@@ -22,27 +22,60 @@ return
   $geoJson
 ```
 
-### to-geo-json-geom
-Converts a GML or ESRI geometry into a GeoJSON format. For example:
+### as-geo-json-geom
+Converts a GML, KML or ESRI's JSON geometry format into the GeoJSON format. For example:
 ```xquery
-let $geoJson := local:to-geo-json-geom($geomIn)
+import module namespace geo = 'https://github.com/james-jw/geo-xq';
+declare namespace gml ='http://www.opengis.net/gml';
+let $geom :=
+  <gml:Point>
+    <gml:coordinates>-86.77711799999999 32.608276000000004</gml:coordinates>
+  </gml:Point>
+let $geoJson := geo:as-geo-json-geom($geom)
 return
   $geoJson
 ```
 
-### to-gml
+The above should return:
+```json
+{
+  "type": "Point",
+  "coordinates": [ -86.77711799999999, 32.608276000000004 ]
+}
+```
+
+### as-gml
 Converts a feature into the GML format.
 
-### to-gml-geom
+### as-gml-geom
 Converts a geometry into a GML format.
 
-### to-esri
+```xquery
+import module namespace geo = 'https://github.com/james-jw/geo-xq';
+declare namespace gml ='http://www.opengis.net/gml';
+let $geom := map {
+  "type": "Point",
+  "coordinates": array {( -86.77711799999999, 32.608276000000004 )} 
+}
+let $gml := geo:as-gml-geom($geom)
+return
+  $gml
+```
+
+### as-esri
 Converts a feature into ESRI's json format
 
-### to-esri-geom
+### as-esri-geom
 Converts a geometry into ESRI's json format
 
-## Working with Services
+### is-gml
+### is-kml
+### is-geo-json
+### is-esri
+
+The above four methods can be used to deteremine what geometry type an object is or is not.
+
+# Working with Services
 This module provides several methods for interacting with services and interoping between geometries and feature representations (GML, GeoJSON, ESRI Json)
 
 ### request-template
@@ -107,6 +140,47 @@ local:query-layer($service, $layer, map {
 ```
 
 `Note the 'returnCountOnly' ESRI Rest SDK parameter.`
+
+## Editing features
+
+### updates-features
+Updates the provided features
+
+```xquery
+update-features($service, $layer, $features as item()*, $options as map()
+```
+
+For example, to update a set of features you could do the following:
+```xquery
+let $service := local:connect($req, 'http://your-service.com/arcgis/rest/services/example-service/FeatureServer')
+let $layer := local:get-layers($service, local:layers($service)[1])
+let $features := local:query-layer($service, $layer, map {
+  'where': 'ObjectID > 0',
+  'outFields': '*'
+})?features
+let $updated-features := $features ! map:merge((., map {
+    'field-to-update': 'new-value',
+    ...
+}))
+return
+  local:update-features($service, $layer, $updated-features)
+```
+
+### delete-features
+
+Used to delete a set of features. Simply pass in the features as a sequence:
+```xquery
+delete-features($service, $layer, $features as item()*, $options as map()
+```
+
+### add-features
+
+Used to create a set of features. 
+```xquery
+add-features($service, $layer, $features as item()*, $options as map()
+```
+
+## Geocoding
 
 ### geocode
 The geocode method accepts a Geocoding service connection and address paramters are defined by the ESRI rest SDK. The result will
