@@ -103,13 +103,26 @@ return
   $service
 ```
 
+### layers
+Returns a set of layer names/ids for use in requesting additional layer information. 
+
+```xquery
+... continued from above
+(: Request the first layer :)
+let $layer-list := local:layers($service)
+return
+ $layer-list
+```
+
 ### get-layers
 Get layer's simply returns a list of layers from the service further anaylsis
 
 ```xquery
 ... continued from above
+let $layer-list := local:layers($service)
+
 (: Request the first layer :)
-let $layers := local:get-layers($service, local:layers($service)[1])
+let $layers := local:get-layers($service, $layer-list[1])
 return
  $layers
 ```
@@ -117,7 +130,7 @@ return
 ### query-layer
 Queries a specified layer with the provided query parameters. For example, with ESRI's feature services a 'where' clause can be provided via the 'where' query paramater.
 
-Here is a full example leveraging the 3 functions we have learned so far:
+Here is a full example leveraging the 4 functions we have learned so far:
 ```xquery
 let $service := local:connect($req, 'http://sampleserver6.arcgisonline.com/arcgis/rest/services/Energy/Infrastructure/FeatureServer')
 let $layers := local:get-layers($service, local:layers($service)[1])
@@ -183,11 +196,12 @@ add-features($service, $layer, $features as item()*, $options as map()
 ## Geocoding
 
 ### geocode
-The geocode method accepts a Geocoding service connection and address paramters are defined by the ESRI rest SDK. The result will
+The geocode method accepts a Geocoding service connection. The paramters required are defined by the ESRI REST SDK. The result will
 either be the empty sequence of a set of geocoded candidates. 
 
 ```xquery
-let $geo-service := local:connect($req, 'http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/Locators/ESRI_Geocode_USA/GeocodeServer')
+let $url := 'http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/Locators/ESRI_Geocode_USA/GeocodeServer'
+let $geo-service := local:connect($req, $url)
 return 
   local:geocode($geo-service, map { 
     'Address': '380 NEW YORK ST', 
@@ -198,49 +212,17 @@ return
 
 ### reverse-geocode
 Operates similar to geocode but in the opposite direction. Instead of returning a geometry for an address, it will return an address
-given an geometry, or the empty sequence if no candidates exist. For example:
+given a geometry. Alternatively it will return the empty sequence if no candidates exist. For example:
 
 ```xquery
-let $geo-service := local:connect($req, 'http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/Locators/ESRI_Geocode_USA/GeocodeServer')
-let $geometry := .?location
+let $url := 'http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/Locators/ESRI_Geocode_USA/GeocodeServer'
+let $geo-service := local:connect($req, $url)
+let $geometry := $feature?location
 return
   local:reverse-geocode($geo-service, $geometry) 
 ```
 
 Other examples
-
-```xquery
-(db:open('0CensusBlockPoints')//geometry)[position() < 1000] ! (copy $c := . modify rename node $c as 'json' return json:serialize($c)
-   => parse-json()
-   => local:to-geo-json-geom()
-   => local:to-ogc-geom())
-
-let $req := local:request-template()
-
-let $server := local:connect($req, 'http://sampleserver1.arcgisonline.com/ArcGIS/rest/services')
-let $folders := $server => local:get-folders($server?folders?*)
-let $s := local:get-services($server, $folders?services?*)[1]
-return
-
-let $service := local:connect($req, 'http://sampleserver6.arcgisonline.com/arcgis/rest/services/Energy/Infrastructure/FeatureServer')
-let $layers := local:get-layers($service, local:layers($service)[2])
-let $features := local:query-layer($service, $layers, map { 
-      'where': 'OBJECTID < 420000',
-      'outFields': '*'
- })
- 
-  for $s in $s[1] return
-  local:replicate($s, $s?layers?*[1])
- 
- 
- let $geo-service := local:connect($req, 'http://sampleserver1.arcgisonline.com/ArcGIS/rest/services/Locators/ESRI_Geocode_USA/GeocodeServer')
- return local:geocode($geo-service, map { 
-    'Address': '380 NEW YORK ST', 
-    'City': 'REDLANDS', 
-    'State': 'CA' 
- }) ! local:reverse-geocode($geo-service, .?location)?location :)
- ```
-
  ```xquery
 (: Example connect to service :)
 let $req := local:request-template()
